@@ -65,10 +65,11 @@ fn cmdGenerate(storage: *Storage, args: *process.ArgIterator) !void {
     const arg_name = args.next() orelse unreachable;
 
     if (storage.get(arg_name)) |p| {
-        const code: u32 = try totp.generate(p.token);
-        var buf: [6]u8 = undefined;
-        const output = try std.fmt.bufPrint(&buf, "{d}", .{code});
-        try write_stdout(output);
+        const code = try totp.generate(p.token);
+        for (code) |c| {
+            std.debug.print("{d}", .{c});
+        }
+        std.debug.print("\n", .{});
     } else {
         return error.ProviderNotFound;
     }

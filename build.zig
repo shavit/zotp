@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const pkg_base32 = b.addModule("base32", .{
-        .source_file = .{ .path = "../zig-base32/src/base32.zig" },
+        .source_file = .{ .path = "./deps/zig-base32/src/base32.zig" },
     });
 
     const lib = b.addStaticLibrary(.{

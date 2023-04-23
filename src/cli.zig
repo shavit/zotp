@@ -62,6 +62,7 @@ fn cmdList(storage: *Storage, args: *process.ArgIterator) !void {
 }
 
 fn cmdGenerate(storage: *Storage, args: *process.ArgIterator) !void {
+    if (args.inner.count < 3) return error.NotEnoughArguments;
     const arg_name = args.next() orelse unreachable;
 
     if (storage.get(arg_name)) |p| {
@@ -110,12 +111,15 @@ pub fn main() !void {
     var args = process.args();
     if (args.inner.count <= 1) {
         println(help);
-        goodbye("Missing arguments", .{});
+        goodbye("\x1b[31m{s}\x1b[0m\n\n", .{"Missing arguments"});
     }
     _ = args.next(); // program name
 
     const a: []const u8 = args.next() orelse unreachable;
-    try start_cli(&args, a);
+    start_cli(&args, a) catch |err| {
+        std.log.err("\x1b[31m{?}\x1b[0m\n\n", .{err});
+        println(help);
+    };
 }
 
 const help =

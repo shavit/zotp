@@ -20,7 +20,7 @@ const CmdType = enum {
 };
 
 fn readCmdType(a: []const u8) ?CmdType {
-    const table = std.ComptimeStringMap(CmdType, .{
+    const table = std.StaticStringMap(CmdType).initComptime(.{
         .{ "add", .add },
         .{ "a", .add },
         .{ "delete", .delete },
@@ -40,7 +40,7 @@ fn cmdAdd(storage: *Storage, args: *process.ArgIterator) !void {
     const name = args.next() orelse unreachable;
     const token = args.next() orelse unreachable;
 
-    var p = Provider{ .name = name, .token = token };
+    const p = Provider{ .name = name, .token = token };
     try storage.put(p);
     try storage.commit();
 }

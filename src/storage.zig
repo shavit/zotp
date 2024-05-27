@@ -3,6 +3,7 @@ const path = std.fs.path;
 const mem = std.mem;
 const io = std.io;
 const fs = std.fs;
+const os = std.os;
 const StringHashMap = std.StringHashMap;
 
 pub const Provider = struct {
@@ -37,7 +38,7 @@ pub const Storage = struct {
         var stream = reader.reader();
         var buf: [1024]u8 = undefined;
         while (try stream.readUntilDelimiterOrEof(&buf, '\n')) |l| {
-            var line = try self.allocator.alloc(u8, l.len);
+            const line = try self.allocator.alloc(u8, l.len);
             @memcpy(line, l);
 
             const p = try parse_fs_line(line);
@@ -46,7 +47,7 @@ pub const Storage = struct {
     }
 
     pub fn find_config(allocator: mem.Allocator) ![]const u8 {
-        const HOME = std.os.getenv("HOME") orelse "~";
+        const HOME = getenv("HOME") orelse "~";
         const config_dir = try std.fmt.allocPrint(allocator, "{s}{u}{s}{u}{s}", .{ HOME, path.sep, ".config", path.sep, "zotp" });
         defer allocator.free(config_dir);
 
@@ -69,6 +70,16 @@ pub const Storage = struct {
             .name = provider,
             .token = line[(provider.len + 1)..(line.len)],
         };
+    }
+
+    fn getenv(key: []const u8) ?[]const u8 {
+        for (os.environ) |env| {
+            var it = mem.split(u8, env[0..mem.len(env)], "=");
+            const index = mem.indexOf(u8, it.next().?, key) orelse 1;
+            if (index == 0) return it.next().?;
+        }
+
+        return null;
     }
 
     pub fn get(self: *Self, name: []const u8) ?Provider {
@@ -115,6 +126,6 @@ pub const Storage = struct {
             i += 1;
         }
 
-        try fs.cwd().writeFile(self.config_path, buf[0..i]);
+        try fs.cwd().writeFile(.{ .sub_path = self.config_path, .data = buf[0..i] });
     }
 };

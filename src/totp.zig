@@ -28,7 +28,7 @@ pub fn generate(key: []const u8) ![6]u8 {
     const decoded = try b32.decode(key);
 
     const counter: u64 = @as(u32, @intCast(time.timestamp())) / STRIDE;
-    const digits = std.PackedIntArrayEndian(u64, .Big, 1);
+    const digits = std.PackedIntArrayEndian(u64, .big, 1);
     var digits_data = @as(digits, undefined);
     digits_data.set(0, counter);
     const hash = hmac_sha(&digits_data.bytes, decoded);

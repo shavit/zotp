@@ -5,20 +5,20 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const pkg_base32 = b.addModule("base32", .{
-        .source_file = .{ .path = "./deps/zig-base32/src/base32.zig" },
+        .root_source_file = b.path("./deps/zig-base32/src/base32.zig"),
     });
 
     const lib = b.addStaticLibrary(.{
         .name = "totp",
-        .root_source_file = .{ .path = "src/totp.zig" },
+        .root_source_file = b.path("src/totp.zig"),
         .target = target,
         .optimize = optimize,
     });
-    lib.addModule("base32", pkg_base32);
+    lib.root_module.addImport("base32", pkg_base32);
     b.installArtifact(lib);
 
     const unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/tests.zig" },
+        .root_source_file = b.path("src/tests.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -30,11 +30,11 @@ pub fn build(b: *std.Build) void {
     // Add executable
     const exe = b.addExecutable(.{
         .name = "zotp",
-        .root_source_file = .{ .path = "src/cli.zig" },
+        .root_source_file = b.path("src/cli.zig"),
         .target = target,
         .optimize = optimize,
     });
-    exe.addModule("base32", pkg_base32);
+    exe.root_module.addImport("base32", pkg_base32);
 
     b.installArtifact(exe);
 

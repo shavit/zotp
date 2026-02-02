@@ -12,37 +12,56 @@ pub const Provider = struct {
 };
 
 pub const Storage = struct {
-    const Self = @This();
-
     allocator: mem.Allocator,
     providers: StringHashMap(Provider),
     config_path: []const u8,
 
-    pub fn init(allocator: mem.Allocator, config_path: []const u8) !Self {
-        var storage = Self{
+    pub fn init(allocator: mem.Allocator, config_path: []const u8) !Storage {
+        var storage = Storage{
             .allocator = allocator,
             .providers = StringHashMap(Provider).init(allocator),
             .config_path = config_path,
         };
         errdefer storage.providers.deinit();
+        try storage.integrity();
         try storage.load();
 
         return storage;
     }
 
-    fn load(self: *Self) !void {
+    fn load(self: *Storage) !void {
         var f = try fs.cwd().openFile(self.config_path, .{ .mode = .read_only });
         defer f.close();
 
-        var reader = io.bufferedReader(f.reader());
-        var stream = reader.reader();
         var buf: [1024]u8 = undefined;
-        while (try stream.readUntilDelimiterOrEof(&buf, '\n')) |l| {
+        var readerwrp = f.reader(&buf);
+        const reader = &readerwrp.interface;
+        while (true) {
+            const l = reader.takeDelimiterExclusive('\n') catch |err| {
+                if (err == error.EndOfStream) break;
+                return err;
+            };
             const line = try self.allocator.alloc(u8, l.len);
             @memcpy(line, l);
 
             const p = try parse_fs_line(line);
             try self.providers.put(p.name, p);
+
+            if (line.len == 0) break;
+        }
+    }
+
+    fn integrity(self: *Storage) !void {
+        var f = try fs.cwd().openFile(self.config_path, .{ .mode = .read_only });
+        defer f.close();
+        const fstat = try f.stat();
+        if (fstat.mode & 0o077 != 0) {
+            return error.InsecureFilePermissions;
+        }
+
+        const pstat = try std.posix.fstat(f.handle);
+        if (pstat.uid != std.posix.getuid()) {
+            return error.FileOwnershipMismatch;
         }
     }
 
@@ -51,10 +70,11 @@ pub const Storage = struct {
         const config_dir = try std.fmt.allocPrint(allocator, "{s}{u}{s}{u}{s}", .{ HOME, path.sep, ".config", path.sep, "zotp" });
         defer allocator.free(config_dir);
 
-        const config_path = try std.fmt.allocPrint(allocator, "{s}{u}{s}", .{ config_dir, path.sep, "zotp.conf" });
+        const config_path = try path.join(allocator, &.{ config_dir, "zotp.conf" });
+        // const config_path = try std.fmt.allocPrint(allocator, "{s}{u}{s}", .{ config_dir, path.sep, "zotp.conf" });
         _ = fs.cwd().statFile(config_path) catch blk: {
             _ = fs.makeDirAbsolute(config_dir) catch {};
-            _ = fs.cwd().createFile(config_path, .{ .truncate = true }) catch {};
+            _ = fs.cwd().createFile(config_path, .{ .mode = 0o600 }) catch {};
             break :blk try fs.cwd().statFile(config_path);
         };
 
@@ -62,7 +82,7 @@ pub const Storage = struct {
     }
 
     fn parse_fs_line(line: []const u8) !Provider {
-        var it = mem.split(u8, line, ":");
+        var it = mem.splitSequence(u8, line, ":");
         const provider = it.next() orelse unreachable;
         if (line.len <= provider.len + 1) return error.CorruptedFile;
 
@@ -74,7 +94,7 @@ pub const Storage = struct {
 
     fn getenv(key: []const u8) ?[]const u8 {
         for (os.environ) |env| {
-            var it = mem.split(u8, env[0..mem.len(env)], "=");
+            var it = mem.splitSequence(u8, env[0..mem.len(env)], "=");
             const index = mem.indexOf(u8, it.next().?, key) orelse 1;
             if (index == 0) return it.next().?;
         }
@@ -82,19 +102,19 @@ pub const Storage = struct {
         return null;
     }
 
-    pub fn get(self: *Self, name: []const u8) ?Provider {
+    pub fn get(self: *Storage, name: []const u8) ?Provider {
         return self.providers.get(name);
     }
 
-    pub fn put(self: *Self, p: Provider) !void {
+    pub fn put(self: *Storage, p: Provider) !void {
         try self.providers.put(p.name, p);
     }
 
-    pub fn delete(self: *Self, p: *Provider) !void {
+    pub fn delete(self: *Storage, p: *Provider) !void {
         _ = self.providers.remove(p.name);
     }
 
-    pub fn list_print(self: *Self) void {
+    pub fn list_print(self: *Storage) void {
         var it = self.providers.iterator();
         var i: u8 = 1;
         while (it.next()) |x| {
@@ -104,9 +124,10 @@ pub const Storage = struct {
         it.index = 0;
     }
 
-    pub fn commit(self: *Self) !void {
+    pub fn commit(self: *Storage) !void {
+        try self.integrity();
         if (self.config_path.len == 0) {
-            std.debug.print("no config path is set\n", .{});
+            return error.NoConfigPath;
         }
 
         const mem_req = self.providers.count() * 128;

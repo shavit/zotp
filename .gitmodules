@@ -1,0 +1,3 @@
+[submodule "deps/zig-base32"]
+	path = deps/zig-base32
+	url = https://github.com/shavit/zig-base32

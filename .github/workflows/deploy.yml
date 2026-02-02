@@ -1,0 +1,35 @@
+name: Deploy
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  grand-extract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install Zig
+        run: |
+          curl -sS https://raw.githubusercontent.com/shavit/zig-install-action/refs/heads/master/install.sh | bash -s -- 0.15.1 x86_64-linux
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Build
+        run: zig build -Doptimize=ReleaseSmall
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          gh release create "$TAG_NAME" \
+            --title "$TAG_NAME" \
+            zig-out/bin/*

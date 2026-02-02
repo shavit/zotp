@@ -37,12 +37,25 @@ fn readCmdType(a: []const u8) ?CmdType {
 
 fn cmdAdd(storage: *Storage, args: *process.ArgIterator) !void {
     if (args.inner.count < 4) return error.NotEnoughArguments;
-    const name = args.next() orelse unreachable;
-    const token = args.next() orelse unreachable;
+    const arg_name: []const u8 = args.next() orelse unreachable;
+    const arg_token: []const u8 = args.next() orelse unreachable;
+    var token: [1024]u8 = undefined;
+    std.debug.print("raw token: {s}\n", .{arg_token});
 
-    const p = Provider{ .name = name, .token = token };
+    var lent: usize = 0;
+    for (arg_token) |c| {
+        if (@as(u8, c -% 33) < 94) {
+            const islo: u8 = @intFromBool(@as(u8, c -% 'a') < 26);
+            token[lent] = c ^ (islo << 5);
+            lent += 1;
+        }
+    }
+
+    const p = Provider{ .name = arg_name, .token = token[0..lent] };
     try storage.put(p);
     try storage.commit();
+
+    @memset(token[0..lent], 0);
 }
 
 fn cmdDelete(storage: *Storage, args: *process.ArgIterator) !void {
@@ -67,14 +80,12 @@ fn cmdGenerate(storage: *Storage, args: *process.ArgIterator) !void {
 
     if (storage.get(arg_name)) |p| {
         const code = try totp.generate(p.token);
-        for (code) |c| {
-            std.debug.print("{d}", .{c});
-        }
-        std.debug.print("\n", .{});
+        std.debug.print("{s}\n", .{code});
     } else {
         return error.ProviderNotFound;
     }
 }
+
 fn cmdUninstall(storage: *Storage, args: *process.ArgIterator) !void {
     if (args.inner.count > 2) return error.InvalidArgument;
 
@@ -86,8 +97,7 @@ fn cmdUninstall(storage: *Storage, args: *process.ArgIterator) !void {
 
 fn start_cli(args: *process.ArgIterator, a: []const u8) !void {
     if (mem.eql(u8, a, "-h")) {
-        println(help);
-        std.process.exit(0);
+        return error.NeedHelp;
     }
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -103,40 +113,30 @@ fn start_cli(args: *process.ArgIterator, a: []const u8) !void {
         .add => try cmdAdd(&storage, args),
         .delete => try cmdDelete(&storage, args),
         .uninstall => try cmdUninstall(&storage, args),
-        else => println(help),
+        else => return error.InvalidArgument,
     }
 }
 
 pub fn main() !void {
     var args = process.args();
     if (args.inner.count <= 1) {
-        println(help);
+        std.debug.print("{s}\n", .{help});
         goodbye("\x1b[31m{s}\x1b[0m\n\n", .{"Missing arguments"});
     }
     _ = args.next(); // program name
 
     const a: []const u8 = args.next() orelse unreachable;
     start_cli(&args, a) catch |err| {
-        std.log.err("\x1b[31m{?}\x1b[0m\n\n", .{err});
-        println(help);
+        if (err != error.NeedHelp) {
+            std.log.err("\x1b[31m{s}\x1b[0m\n\n", .{@errorName(err)});
+        }
+        std.debug.print("{s}\n", .{help});
+        std.process.exit(0);
     };
 }
 
 const help =
     "Usage: zotp [command] [options]\n" ++ "\t-h Prints this message\n" ++ "\nOptions: list generate add delete uninstall\n";
-
-fn println(text: []const u8) void {
-    std.debug.print("{s}\n", .{text});
-}
-
-fn write_stdout(msg: []const u8) !void {
-    const stdout_file = std.io.getStdOut().writer();
-    var bw = std.io.bufferedWriter(stdout_file);
-    const writer = bw.writer();
-
-    try writer.print("{s}\n", .{msg});
-    try bw.flush();
-}
 
 fn goodbye(comptime format: []const u8, args: anytype) noreturn {
     std.log.err(format, args);

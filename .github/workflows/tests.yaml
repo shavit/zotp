@@ -1,0 +1,23 @@
+name: Test
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install Zig
+        run: |
+          curl -sS https://raw.githubusercontent.com/shavit/zig-install-action/refs/heads/master/install.sh | bash -s -- 0.15.1 x86_64-linux
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Verify 
+        run: zig version
+
+      - name: Execute
+        run: zig build test
